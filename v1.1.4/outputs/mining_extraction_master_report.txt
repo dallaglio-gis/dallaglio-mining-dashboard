@@ -1,0 +1,23 @@
+MINING DAILY REPORT - MASTER EXTRACTION SUMMARY
+============================================================
+
+Processing Time: 2025-08-22 12:14:39
+Input File: C:\Users\GEOGRA~1\AppData\Local\Temp\tmpjogyi0wb.xlsx
+Output Directory: outputs
+
+PROCESSING RESULTS:
+------------------------------
+HOISTING: [SUCCESS]
+  Records: 130
+  Output: outputs\hoisting_data.csv
+  Validation: 0 passed, 0 failed
+
+OVERALL SUMMARY:
+--------------------
+Sheets Requested: 1
+Sheets Successful: 1
+Total Records: 130
+
+OUTPUT FILES:
+---------------
+- hoisting_data.csv

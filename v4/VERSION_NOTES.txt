@@ -1,0 +1,23 @@
+# Version Notes - CEO Daily Report Automation
+
+## 2025-07-01
+### Major Enhancements
+- Script now updates existing daily sheets if source data changes, not just adding new ones.
+- Month-To-Date (MTD) values are recalculated for each day, using cumulative actuals up to that day (not static values).
+- Budget MTD values are also calculated cumulatively for each day, using daily budget values from the source file (not static values).
+- Both MTD and Budget MTD use weighted average for grade calculations.
+- Handles backdating: if previous days' data is updated, all affected subsequent days' MTD and Budget MTD are recalculated.
+- Smarter change detection: sheets are only updated if there is a real change in daily, MTD, or Budget MTD values.
+- All enhancements are backward compatible with previous versions of the script.
+
+### Configuration
+- Budget value row numbers are now configurable in the script (see extract_daily_data_for_month).
+- No changes to input/output file naming conventions.
+
+### Bug Fixes
+- Fixed issues where MTD and Budget MTD could be out of sync if data changed after initial reporting.
+
+### Usage
+- See updated README_run_instructions.txt for usage details.
+
+---

@@ -1,0 +1,131 @@
+Date,Source,METRIC1,METRIC2,Value
+2025-08-01,Budget,Actual,Variance,1.0
+2025-08-01,Lobe Shaft,Skips Hoisted,Budget Skips,111.42857142857143
+2025-08-01,Southwell Shaft,Skips Hoisted,Budget Skips,164.44444444444446
+2025-08-01,Tonnage Reconciliation,,Delivered vs Hoisted,-0.001277139208173691
+2025-08-01,Trucking (HOWO),# of Loads,Southwell,29.0
+2025-08-02,Budget,Actual,Variance,2.0
+2025-08-02,Lobe Shaft,Skips Hoisted,Budget Skips,142.85714285714286
+2025-08-02,Southwell Shaft,Skips Hoisted,Budget Skips,188.88888888888889
+2025-08-02,Tonnage Reconciliation,,Delivered vs Hoisted,-0.025089605734767026
+2025-08-02,Trucking (HOWO),# of Loads,Southwell,34.0
+2025-08-03,Budget,Actual,Variance,3.0
+2025-08-03,Lobe Shaft,Skips Hoisted,Budget Skips,142.85714285714286
+2025-08-03,Southwell Shaft,Skips Hoisted,Budget Skips,188.88888888888889
+2025-08-03,Tonnage Reconciliation,,Delivered vs Hoisted,-0.020496224379719527
+2025-08-03,Trucking (HOWO),# of Loads,Southwell,32.0
+2025-08-04,Budget,Actual,Variance,4.0
+2025-08-04,Lobe Shaft,Skips Hoisted,Budget Skips,142.85714285714286
+2025-08-04,Southwell Shaft,Skips Hoisted,Budget Skips,188.88888888888889
+2025-08-04,Trucking (HOWO),# of Loads,Southwell,28.0
+2025-08-05,Budget,Actual,Variance,5.0
+2025-08-05,Lobe Shaft,Skips Hoisted,Budget Skips,142.85714285714286
+2025-08-05,Southwell Shaft,Skips Hoisted,Budget Skips,188.88888888888889
+2025-08-05,Tonnage Reconciliation,,Delivered vs Hoisted,0.039642657733109994
+2025-08-05,Trucking (HOWO),# of Loads,Southwell,31.0
+2025-08-06,Budget,Actual,Variance,6.0
+2025-08-06,Lobe Shaft,Skips Hoisted,Budget Skips,142.85714285714286
+2025-08-06,Southwell Shaft,Skips Hoisted,Budget Skips,188.88888888888889
+2025-08-06,Tonnage Reconciliation,,Delivered vs Hoisted,-0.00972862263184844
+2025-08-06,Trucking (HOWO),# of Loads,Southwell,32.0
+2025-08-07,Budget,Actual,Variance,7.0
+2025-08-07,Lobe Shaft,Skips Hoisted,Budget Skips,142.85714285714286
+2025-08-07,Southwell Shaft,Skips Hoisted,Budget Skips,188.88888888888889
+2025-08-07,Tonnage Reconciliation,,Delivered vs Hoisted,0.101994301994302
+2025-08-07,Trucking (HOWO),# of Loads,Southwell,31.0
+2025-08-08,Budget,Actual,Variance,8.0
+2025-08-08,Lobe Shaft,Skips Hoisted,Budget Skips,111.42857142857143
+2025-08-08,Southwell Shaft,Skips Hoisted,Budget Skips,164.44444444444446
+2025-08-08,Tonnage Reconciliation,,Delivered vs Hoisted,0.01020408163265306
+2025-08-09,Budget,Actual,Variance,9.0
+2025-08-09,Lobe Shaft,Skips Hoisted,Budget Skips,142.85714285714286
+2025-08-09,Southwell Shaft,Skips Hoisted,Budget Skips,188.88888888888889
+2025-08-09,Tonnage Reconciliation,,Delivered vs Hoisted,0.0016750418760469012
+2025-08-09,Trucking (HOWO),# of Loads,Southwell,31.0
+2025-08-10,Budget,Actual,Variance,10.0
+2025-08-10,Lobe Shaft,Skips Hoisted,Budget Skips,142.85714285714286
+2025-08-10,Southwell Shaft,Skips Hoisted,Budget Skips,188.88888888888889
+2025-08-10,Tonnage Reconciliation,,Delivered vs Hoisted,0.03468547912992358
+2025-08-10,Trucking (HOWO),# of Loads,Southwell,31.0
+2025-08-11,Budget,Actual,Variance,11.0
+2025-08-11,Tonnage Reconciliation,,Delivered vs Hoisted,-0.02475532527345999
+2025-08-11,Trucking (HOWO),# of Loads,Southwell,29.0
+2025-08-12,Budget,Actual,Variance,12.0
+2025-08-12,Southwell Shaft,Skips Hoisted,Budget Skips,186.0
+2025-08-12,Tonnage Reconciliation,,Delivered vs Hoisted,0.0374331550802139
+2025-08-12,Trucking (HOWO),# of Loads,Southwell,29.0
+2025-08-13,Budget,Actual,Variance,13.0
+2025-08-13,Lobe Shaft,Skips Hoisted,Budget Skips,142.85714285714286
+2025-08-13,Southwell Shaft,Skips Hoisted,Budget Skips,188.88888888888889
+2025-08-13,Tonnage Reconciliation,,Delivered vs Hoisted,0.032520325203252036
+2025-08-13,Trucking (HOWO),# of Loads,Southwell,25.0
+2025-08-14,Budget,Actual,Variance,14.0
+2025-08-14,Lobe Shaft,Skips Hoisted,Budget Skips,142.85714285714286
+2025-08-14,Southwell Shaft,Skips Hoisted,Budget Skips,188.88888888888889
+2025-08-14,Tonnage Reconciliation,,Delivered vs Hoisted,-0.0350076103500761
+2025-08-14,Trucking (HOWO),# of Loads,Southwell,22.0
+2025-08-15,Budget,Actual,Variance,15.0
+2025-08-15,Lobe Shaft,Skips Hoisted,Budget Skips,111.42857142857143
+2025-08-15,Southwell Shaft,Skips Hoisted,Budget Skips,156.66666666666666
+2025-08-15,Tonnage Reconciliation,,Delivered vs Hoisted,0.05493133583021224
+2025-08-15,Trucking (HOWO),# of Loads,Southwell,27.0
+2025-08-16,Budget,Actual,Variance,16.0
+2025-08-16,Lobe Shaft,Skips Hoisted,Budget Skips,142.85714285714286
+2025-08-16,Southwell Shaft,Skips Hoisted,Budget Skips,181.11111111111111
+2025-08-16,Tonnage Reconciliation,,Delivered vs Hoisted,-0.03737373737373737
+2025-08-16,Trucking (HOWO),# of Loads,Southwell,33.0
+2025-08-17,Budget,Actual,Variance,17.0
+2025-08-17,Lobe Shaft,Skips Hoisted,Budget Skips,142.85714285714286
+2025-08-17,Southwell Shaft,Skips Hoisted,Budget Skips,181.11111111111111
+2025-08-17,Tonnage Reconciliation,,Delivered vs Hoisted,0.04666666666666667
+2025-08-17,Trucking (HOWO),# of Loads,Southwell,34.0
+2025-08-18,Budget,Actual,Variance,18.0
+2025-08-18,Lobe Shaft,Skips Hoisted,Budget Skips,142.85714285714286
+2025-08-18,Southwell Shaft,Skips Hoisted,Budget Skips,181.11111111111111
+2025-08-18,Tonnage Reconciliation,,Delivered vs Hoisted,0.012222222222222223
+2025-08-18,Trucking (HOWO),# of Loads,Southwell,33.0
+2025-08-19,Budget,Actual,Variance,19.0
+2025-08-19,Lobe Shaft,Skips Hoisted,Budget Skips,111.42857142857143
+2025-08-19,Southwell Shaft,Skips Hoisted,Budget Skips,156.66666666666666
+2025-08-19,Tonnage Reconciliation,,Delivered vs Hoisted,0.3165618448637317
+2025-08-19,Trucking (HOWO),# of Loads,Southwell,10.0
+2025-08-20,Budget,Actual,Variance,20.0
+2025-08-20,Lobe Shaft,Skips Hoisted,Budget Skips,142.85714285714286
+2025-08-20,Southwell Shaft,Skips Hoisted,Budget Skips,181.11111111111111
+2025-08-20,Tonnage Reconciliation,,Delivered vs Hoisted,0.021111111111111112
+2025-08-20,Trucking (HOWO),# of Loads,Southwell,31.0
+2025-08-21,Budget,Actual,Variance,21.0
+2025-08-21,Lobe Shaft,Skips Hoisted,Budget Skips,142.85714285714286
+2025-08-21,Southwell Shaft,Skips Hoisted,Budget Skips,181.11111111111111
+2025-08-21,Tonnage Reconciliation,,Delivered vs Hoisted,0.016666666666666666
+2025-08-21,Trucking (HOWO),# of Loads,Southwell,31.0
+2025-08-22,Budget,Actual,Variance,22.0
+2025-08-22,Lobe Shaft,Skips Hoisted,Budget Skips,142.85714285714286
+2025-08-22,Southwell Shaft,Skips Hoisted,Budget Skips,212.22222222222223
+2025-08-23,Budget,Actual,Variance,23.0
+2025-08-23,Lobe Shaft,Skips Hoisted,Budget Skips,142.85714285714286
+2025-08-23,Southwell Shaft,Skips Hoisted,Budget Skips,212.22222222222223
+2025-08-24,Budget,Actual,Variance,24.0
+2025-08-24,Lobe Shaft,Skips Hoisted,Budget Skips,142.85714285714286
+2025-08-24,Southwell Shaft,Skips Hoisted,Budget Skips,212.22222222222223
+2025-08-25,Budget,Actual,Variance,25.0
+2025-08-25,Lobe Shaft,Skips Hoisted,Budget Skips,142.85714285714286
+2025-08-25,Southwell Shaft,Skips Hoisted,Budget Skips,212.22222222222223
+2025-08-26,Budget,Actual,Variance,26.0
+2025-08-26,Lobe Shaft,Skips Hoisted,Budget Skips,142.85714285714286
+2025-08-26,Southwell Shaft,Skips Hoisted,Budget Skips,212.22222222222223
+2025-08-27,Budget,Actual,Variance,27.0
+2025-08-27,Lobe Shaft,Skips Hoisted,Budget Skips,111.0
+2025-08-27,Southwell Shaft,Skips Hoisted,Budget Skips,212.22222222222223
+2025-08-28,Budget,Actual,Variance,28.0
+2025-08-28,Lobe Shaft,Skips Hoisted,Budget Skips,142.85714285714286
+2025-08-28,Southwell Shaft,Skips Hoisted,Budget Skips,212.22222222222223
+2025-08-29,Budget,Actual,Variance,29.0
+2025-08-29,Lobe Shaft,Skips Hoisted,Budget Skips,111.42857142857143
+2025-08-29,Southwell Shaft,Skips Hoisted,Budget Skips,187.77777777777777
+2025-08-30,Budget,Actual,Variance,30.0
+2025-08-30,Lobe Shaft,Skips Hoisted,Budget Skips,142.85714285714286
+2025-08-30,Southwell Shaft,Skips Hoisted,Budget Skips,212.22222222222223
+2025-08-31,Budget,Actual,Variance,31.0
+2025-08-31,Lobe Shaft,Skips Hoisted,Budget Skips,142.85714285714286
+2025-08-31,Southwell Shaft,Skips Hoisted,Budget Skips,212.22222222222223

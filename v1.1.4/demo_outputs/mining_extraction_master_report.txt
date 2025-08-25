@@ -1,0 +1,30 @@
+MINING DAILY REPORT - MASTER EXTRACTION SUMMARY
+============================================================
+
+Processing Time: 2025-08-06 12:49:37
+Input File: /home/ubuntu/Uploads/July_2025_DAILY_REPORT.xlsx
+Output Directory: demo_outputs
+
+PROCESSING RESULTS:
+------------------------------
+STOPING: ✓ SUCCESS
+  Records: 480
+  Output: demo_outputs/stoping_data.csv
+
+BENCHES: ✓ SUCCESS
+  Records: 1972
+  Output: demo_outputs/benches_data.csv
+  Validation: 0 passed, 0 failed
+
+OVERALL SUMMARY:
+--------------------
+Sheets Requested: 2
+Sheets Successful: 2
+Total Records: 2452
+
+OUTPUT FILES:
+---------------
+- stoping_data.csv
+- benches_data.csv
+- benches_raw_data.csv
+- benches_average_grades.csv
