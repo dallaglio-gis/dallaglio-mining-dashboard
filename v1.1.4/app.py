@@ -16,6 +16,7 @@ from datetime import datetime
 from typing import Dict, List
 import zipfile
 import tempfile
+import re
 
 # Add current directory to path
 sys.path.append(os.path.dirname(os.path.abspath(__file__)))
@@ -25,6 +26,66 @@ from config.validation_targets import VALIDATION_TARGETS, SHEET_CONFIGS
 
 # NOTE: Page config and CSS styling are set within main() to avoid import-time
 # Streamlit calls when this module is imported by another app.
+
+def _decode_bytes(x):
+    # Convert raw bytes to str; keep other values unchanged
+    if isinstance(x, (bytes, bytearray)):
+        try:
+            return x.decode("utf-8", "ignore")
+        except Exception:
+            return str(x)
+    return x
+
+NUMERIC_COL_HINT = re.compile(
+    r"(tonnes|grade|gold|metres|mtd|budget|actual|kg|gpt|value)$",
+    re.IGNORECASE
+)
+
+def sanitize_for_streamlit(df: pd.DataFrame) -> pd.DataFrame:
+    """
+    Make DataFrame Arrow- & CSV-friendly:
+    - Decode bytes to str
+    - Normalize placeholders ('' '-' '–' '—' 'N/A') -> NaN
+    - Coerce likely numeric columns to float
+    - Coerce 'Date' columns to datetime
+    """
+    if df is None or df.empty:
+        return df
+
+    out = df.copy()
+
+    # 1) Decode bytes & normalize placeholders
+    for col in out.columns:
+        if out[col].dtype == object:
+            out[col] = out[col].map(_decode_bytes)
+            out[col] = out[col].replace(
+                {
+                    "": pd.NA,
+                    " ": pd.NA,
+                    "-": pd.NA,
+                    "–": pd.NA,
+                    "—": pd.NA,
+                    "N/A": pd.NA,
+                    "n/a": pd.NA,
+                    "NA": pd.NA,
+                    "na": pd.NA,
+                }
+            )
+
+    # 2) Dates
+    if "Date" in out.columns:
+        out["Date"] = pd.to_datetime(out["Date"], errors="coerce")
+
+    # 3) Numeric-ish columns (by name hint)
+    for col in out.columns:
+        if NUMERIC_COL_HINT.search(col):
+            out[col] = pd.to_numeric(out[col], errors="coerce")
+
+    return out
+
+def to_csv_bytes(df: pd.DataFrame) -> bytes:
+    """Always provide bytes to st.download_button."""
+    return df.to_csv(index=False).encode("utf-8")
 
 def main():
     # Streamlit page configuration and styling (set at runtime)
@@ -230,18 +291,20 @@ def display_results(results: Dict, include_visualization: bool):
                 
                 # Data preview
                 st.subheader(f"{sheet_type} Data Preview")
-                df = sheet_result['data']
+                df_raw = sheet_result['data']
+                df = sanitize_for_streamlit(df_raw)
                 
                 if not df.empty:
                     st.dataframe(df.head(10), use_container_width=True)
                     
                     # Download button
-                    csv_data = df.to_csv(index=False)
+                    csv_bytes = to_csv_bytes(df)
                     st.download_button(
                         f"📥 Download {sheet_type} Data",
-                        csv_data,
+                        data=csv_bytes,
                         file_name=f"{sheet_type.lower()}_data.csv",
-                        mime="text/csv"
+                        mime="text/csv",
+                        key=f"dl_{sheet_type.lower()}"
                     )
                     
                     # Visualization
@@ -251,15 +314,16 @@ def display_results(results: Dict, include_visualization: bool):
                 # BENCHES special case (has additional average grades file)
                 if sheet_type == 'BENCHES' and 'data_avg' in sheet_result:
                     st.subheader("Average Grades Data")
-                    avg_df = sheet_result['data_avg']
+                    avg_df = sanitize_for_streamlit(sheet_result['data_avg'])
                     st.dataframe(avg_df.head(10), use_container_width=True)
                     
-                    avg_csv = avg_df.to_csv(index=False)
+                    avg_bytes = to_csv_bytes(avg_df)
                     st.download_button(
                         "📥 Download Average Grades",
-                        avg_csv,
+                        data=avg_bytes,
                         file_name="benches_average_grades.csv",
-                        mime="text/csv"
+                        mime="text/csv",
+                        key="dl_benches_avg"
                     )
             
             else:
@@ -407,13 +471,13 @@ def create_bulk_download(results: Dict):
     with zipfile.ZipFile(zip_buffer.name, 'w') as zip_file:
         for sheet_type, sheet_result in results.get('sheets_processed', {}).items():
             if sheet_result['success'] and not sheet_result['data'].empty:
-                csv_data = sheet_result['data'].to_csv(index=False)
-                zip_file.writestr(f"{sheet_type.lower()}_data.csv", csv_data)
+                clean = sanitize_for_streamlit(sheet_result['data'])
+                zip_file.writestr(f"{sheet_type.lower()}_data.csv", clean.to_csv(index=False))
                 
                 # Add average grades for BENCHES
                 if sheet_type == 'BENCHES' and 'data_avg' in sheet_result:
-                    avg_csv = sheet_result['data_avg'].to_csv(index=False)
-                    zip_file.writestr("benches_average_grades.csv", avg_csv)
+                    avg_clean = sanitize_for_streamlit(sheet_result['data_avg'])
+                    zip_file.writestr("benches_average_grades.csv", avg_clean.to_csv(index=False))
     
     # Read the ZIP file content first
     try:
@@ -422,9 +486,10 @@ def create_bulk_download(results: Dict):
         
         st.download_button(
             "📦 Download ZIP Archive",
-            zip_content,
+            data=zip_content,
             file_name=f"mining_extraction_results_{datetime.now().strftime('%Y%m%d_%H%M%S')}.zip",
-            mime="application/zip"
+            mime="application/zip",
+            key="dl_zip_all"
         )
     finally:
         # Clean up the temporary file
