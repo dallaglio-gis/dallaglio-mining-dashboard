@@ -48,6 +48,7 @@ def sanitize_for_streamlit(df: pd.DataFrame) -> pd.DataFrame:
     - Normalize placeholders ('' '-' '–' '—' 'N/A') -> NaN
     - Coerce likely numeric columns to float
     - Coerce 'Date' columns to datetime
+    - Handle mixed types for Arrow compatibility
     """
     if df is None or df.empty:
         return df
@@ -57,7 +58,13 @@ def sanitize_for_streamlit(df: pd.DataFrame) -> pd.DataFrame:
     # 1) Decode bytes & normalize placeholders
     for col in out.columns:
         if out[col].dtype == object:
+            # First decode bytes
             out[col] = out[col].map(_decode_bytes)
+            
+            # Convert all to string first to handle mixed types
+            out[col] = out[col].astype(str)
+            
+            # Then normalize placeholders
             out[col] = out[col].replace(
                 {
                     "": pd.NA,
@@ -69,6 +76,9 @@ def sanitize_for_streamlit(df: pd.DataFrame) -> pd.DataFrame:
                     "n/a": pd.NA,
                     "NA": pd.NA,
                     "na": pd.NA,
+                    "nan": pd.NA,
+                    "None": pd.NA,
+                    "none": pd.NA,
                 }
             )
 
@@ -76,10 +86,27 @@ def sanitize_for_streamlit(df: pd.DataFrame) -> pd.DataFrame:
     if "Date" in out.columns:
         out["Date"] = pd.to_datetime(out["Date"], errors="coerce")
 
-    # 3) Numeric-ish columns (by name hint)
+    # 3) Numeric-ish columns (by name hint) - more aggressive cleaning
     for col in out.columns:
         if NUMERIC_COL_HINT.search(col):
+            # Clean up the column first
+            if out[col].dtype == object:
+                # Remove any remaining non-numeric characters except decimal points and minus signs
+                out[col] = out[col].astype(str).str.replace(r'[^\d\.\-]', '', regex=True)
+                # Replace empty strings with NaN
+                out[col] = out[col].replace('', pd.NA)
+            
+            # Convert to numeric
             out[col] = pd.to_numeric(out[col], errors="coerce")
+            
+            # Ensure no mixed types remain
+            out[col] = out[col].astype('float64')
+
+    # 4) Ensure all remaining object columns are clean strings
+    for col in out.columns:
+        if out[col].dtype == object:
+            # Fill NaN with empty string and ensure all are strings
+            out[col] = out[col].fillna("").astype(str)
 
     return out
 
