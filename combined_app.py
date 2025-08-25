@@ -469,7 +469,9 @@ def display_mining_results(results: dict, include_visualization: bool):
                         data=csv_bytes,
                         file_name=f"{sheet_type.lower()}_data.csv",
                         mime="text/csv",
+                        key=f"mp_dl_{sheet_type.lower()}"
                     )
+                    st.caption(f"File size: {len(csv_bytes):,} bytes")
                     if include_visualization:
                         display_visualizations(df, sheet_type)
                 # Additional average grades for benches
@@ -484,14 +486,16 @@ def display_mining_results(results: dict, include_visualization: bool):
                         data=avg_bytes,
                         file_name="benches_average_grades.csv",
                         mime="text/csv",
+                        key="mp_dl_benches_avg",
                     )
+                    st.caption(f"File size: {len(avg_bytes):,} bytes")
             else:
                 st.error(f"{sheet_type} processing failed: {sheet_result.get('error', 'Unknown error')}")
 
     # Bulk download of all results
     st.subheader("Bulk Download")
-    if st.button("Download All Results"):
-        create_bulk_download(results)
+    # Always show the ZIP download button if results exist
+    create_bulk_download(results)
 
 
 def create_bulk_download(results: dict):
@@ -514,12 +518,15 @@ def create_bulk_download(results: dict):
                     zf.writestr("benches_average_grades.csv", avg_bytes)
 
     zip_buffer.seek(0)
+    zip_bytes = zip_buffer.getvalue()
     st.download_button(
         label="Download ZIP Archive",
-        data=zip_buffer.getvalue(),
+        data=zip_bytes,
         file_name=f"mining_extraction_results_{datetime.now().strftime('%Y%m%d_%H%M%S')}.zip",
         mime="application/zip",
+        key="mp_zip_download",
     )
+    st.caption(f"ZIP size: {len(zip_bytes):,} bytes")
 
 
 # ---------------------------------------------------------------------------
@@ -663,7 +670,9 @@ def run_production_dashboard_page():
             data=csv,
             file_name="filtered_production_data.csv",
             mime="text/csv",
+            key="pd_download_filtered",
         )
+        st.caption(f"File size: {len(csv):,} bytes")
 
     # Apply filters to data
     filtered_df = df[(df['Date'].dt.date >= start_date) & (df['Date'].dt.date <= end_date) & (df['Stope_ID'].isin(selected_stopes))]
@@ -1067,7 +1076,9 @@ def run_daily_report_update_page():
             data=updated_bytes,
             file_name=output_filename,
             mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+            key="dr_download",
         )
+        st.caption(f"File size: {len(updated_bytes):,} bytes")
     except Exception as e:
         st.error(f"An error occurred while running the update: {e}")
 
