@@ -17,6 +17,15 @@ Main app entrypoint: `combined_app.py`.
 
 - Monthly Stope Performance page: in-memory Excel updates, robust parsing/ID normalization, and a timestamped download with file-size caption.
 
+## What's new
+- Monthly Stope Performance page integrated into the combined app navigation.
+- MSP helper parsing and workbook update functions integrated into `combined_app.py`.
+- Consistent sanitization and download behavior (timestamped filenames, file-size captions).
+- Dependencies pinned including `pyarrow==15.0.2` for Arrow stability.
+- Documentation updates and clearer usage guidance.
+
+See detailed change history in [RELEASE_NOTES.md](RELEASE_NOTES.md).
+
 ## Project structure
 ```
 .
