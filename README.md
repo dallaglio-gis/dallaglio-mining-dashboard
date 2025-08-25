@@ -43,7 +43,6 @@ Requirements: Python 3.10–3.11 recommended.
 
 ```bash
 pip install -r requirements.txt
-pip install pyarrow==15.0.2    # recommended for stable Arrow serialization
 streamlit run combined_app.py
 ```
 
@@ -71,7 +70,7 @@ Notes:
 - Template not found: Confirm a file matching `Geology Daily Work Plan*.xlsx` exists in `v4/`.
 - Import errors: The app auto-adds `v1.1.4/` and `v4/` to `sys.path`. Keep the directories alongside `combined_app.py`.
 
-- Arrow serialization errors: install `pyarrow==15.0.2` (recommended) and restart; ensure you're uploading standard Excel files.
+- Arrow serialization errors: ensure your environment uses pinned `pyarrow==15.0.2` (already in `requirements.txt`); re-run `pip install -r requirements.txt` and restart. Ensure you're uploading standard Excel files.
 - MSP workbook schema: confirm sheets `SUMMARY` and `Stopes PNM & MNP` exist and are not protected; the page updates these sheets in-place.
 ## License
 Add your preferred license (e.g., MIT) if needed.
