@@ -118,6 +118,61 @@ import pandas as pd
 import numpy as np
 import plotly.express as px
 import plotly.graph_objects as go
+import re
+
+# --- Data sanitization utilities for Streamlit/Arrow compatibility ---
+def _decode_bytes(x):
+    if isinstance(x, (bytes, bytearray)):
+        try:
+            return x.decode('utf-8', errors='replace')
+        except Exception:
+            return str(x)
+    return x
+
+NUMERIC_COL_HINT = re.compile(r'(?i)\b(tonnes|tons|t|kg|gpt|grade|value|qty|quantity|metres|meters|m|au|oz|gold)\b')
+
+def sanitize_for_streamlit(df: pd.DataFrame) -> pd.DataFrame:
+    """Clean a DataFrame to be Arrow-serializable in Streamlit.
+
+    - Decode bytes to strings
+    - Coerce likely numeric columns to float64, replacing placeholders with 0.0
+    - Parse date columns
+    - Ensure other object columns are pure strings
+    """
+    if df is None or df.empty:
+        return df
+
+    out = df.copy()
+
+    # First pass: decode all bytes in object columns
+    for col in out.columns:
+        if out[col].dtype == object:
+            out[col] = out[col].map(_decode_bytes)
+
+    # Second pass: handle column types
+    for col in out.columns:
+        if pd.api.types.is_numeric_dtype(out[col]):
+            out[col] = out[col].fillna(0.0)
+            continue
+
+        col_lower = col.lower()
+        if NUMERIC_COL_HINT.search(col) or any(h in col_lower for h in ['actual', 'budget', 'mtd']):
+            if out[col].dtype == object:
+                out[col] = out[col].astype(str)
+                out[col] = out[col].replace(['', ' ', '-', '–', '—', 'N/A', 'n/a', 'NA', 'na', 'None', 'none', 'nan', 'NaN'], '0')
+                out[col] = out[col].str.replace(r'[^\d\.\-]', '', regex=True)
+                out[col] = out[col].replace('', '0')
+            out[col] = pd.to_numeric(out[col], errors='coerce').fillna(0.0).astype('float64')
+        elif 'date' in col_lower:
+            out[col] = pd.to_datetime(out[col], errors='coerce')
+        else:
+            out[col] = out[col].fillna('').astype(str)
+            out[col] = out[col].replace(['nan', 'NaN', 'None', 'none'], '')
+
+    return out
+
+def to_csv_bytes(df: pd.DataFrame) -> bytes:
+    return df.to_csv(index=False).encode('utf-8')
 
 # Define CURRENT_DIR for compatibility with existing code
 CURRENT_DIR = BASE_DIR
@@ -180,7 +235,8 @@ def load_production_data(path: str = 'jan_aug_data_with_bench_grades.xlsx') -> p
         # Parse dates
         if 'Date' in df.columns:
             df['Date'] = pd.to_datetime(df['Date'])
-        return df
+        # Final sanitize to ensure Arrow compatibility
+        return sanitize_for_streamlit(df)
     return _loader(path)
 
 
@@ -295,6 +351,8 @@ def run_mining_processor_page():
         include_visualization = st.checkbox("Generate Data Visualizations", value=True, key="mp_vis")
         create_summary_report = st.checkbox("Create Summary Report", value=True, key="mp_summary")
         output_dir = st.text_input("Output Directory", value="outputs", key="mp_outdir")
+        # Debug toggle
+        st.checkbox("Show Debug Column Types", value=False, key="mp_show_dtypes")
 
     if uploaded_file is None:
         # Show a welcome message when no file is uploaded
@@ -391,13 +449,24 @@ def display_mining_results(results: dict, include_visualization: bool):
                     display_validation_results(sheet_result['validation'])
                 # Preview data
                 st.subheader(f"{sheet_type} Data Preview")
-                df = sheet_result['data']
+                df_raw = sheet_result['data']
+                df = sanitize_for_streamlit(df_raw)
                 if not df.empty:
+                    # Optional debug: dtypes and sample unique values
+                    if st.session_state.get('mp_show_dtypes', False):
+                        with st.expander("Debug: Column Types and Samples", expanded=False):
+                            st.write("Dtypes:")
+                            st.write(pd.DataFrame(df.dtypes.astype(str), columns=['dtype']))
+                            # Show unique samples for object columns
+                            obj_cols = [c for c in df.columns if df[c].dtype == object]
+                            for c in obj_cols[:8]:  # limit to 8 columns for brevity
+                                uniq = df[c].dropna().unique()[:10]
+                                st.write({c: uniq})
                     st.dataframe(df.head(10), use_container_width=True)
-                    csv_data = df.to_csv(index=False)
+                    csv_bytes = to_csv_bytes(df)
                     st.download_button(
                         label=f"Download {sheet_type} Data",
-                        data=csv_data,
+                        data=csv_bytes,
                         file_name=f"{sheet_type.lower()}_data.csv",
                         mime="text/csv",
                     )
@@ -406,12 +475,13 @@ def display_mining_results(results: dict, include_visualization: bool):
                 # Additional average grades for benches
                 if sheet_type == 'BENCHES' and 'data_avg' in sheet_result:
                     st.subheader("Average Grades Data")
-                    avg_df = sheet_result['data_avg']
+                    avg_df_raw = sheet_result['data_avg']
+                    avg_df = sanitize_for_streamlit(avg_df_raw)
                     st.dataframe(avg_df.head(10), use_container_width=True)
-                    avg_csv = avg_df.to_csv(index=False)
+                    avg_bytes = to_csv_bytes(avg_df)
                     st.download_button(
                         label="Download Average Grades",
-                        data=avg_csv,
+                        data=avg_bytes,
                         file_name="benches_average_grades.csv",
                         mime="text/csv",
                     )
@@ -422,88 +492,6 @@ def display_mining_results(results: dict, include_visualization: bool):
     st.subheader("Bulk Download")
     if st.button("Download All Results"):
         create_bulk_download(results)
-
-
-def display_validation_results(validation: dict):
-    """Show a summary of validation tests.  Passed and failed test
-    counts are highlighted along with detailed per‑metric results.
-    """
-    if 'details' not in validation:
-        return
-    cols = st.columns(2)
-    with cols[0]:
-        st.metric("Tests Passed", validation.get('passed', 0))
-    with cols[1]:
-        st.metric("Tests Failed", validation.get('failed', 0))
-    # Detailed breakdown
-    for metric, result in validation.get('details', {}).items():
-        status = "✅" if result.get('passed') else "❌"
-        row = st.columns(4)
-        with row[0]:
-            st.text(f"{status} {metric}")
-        with row[1]:
-            st.text(f"Target: {result.get('target', 0):.2f}")
-        with row[2]:
-            st.text(f"Actual: {result.get('actual', 0):.2f}")
-        with row[3]:
-            diff_pct = result.get('diff_percentage', 0) * 100
-            st.text(f"Diff: {diff_pct:.1f}%")
-
-
-def display_visualizations(df: pd.DataFrame, sheet_type: str):
-    """Generate visualizations tailored to each sheet type.  This
-    function largely mirrors the original dashboard's charts but is
-    simplified for integration into the combined app.  Only simple
-    line, bar and pie charts are included.  Additional chart types
-    (scatter matrices, Sankey diagrams, etc.) can be implemented
-    similarly if desired.
-    """
-    st.subheader(f"{sheet_type} Visualizations")
-    if sheet_type in ['STOPING', 'TRAMMING']:
-        # Ensure date and numeric columns are present
-        if 'Date' in df.columns and len(df.columns) >= 6:
-            df2 = df.copy()
-            # Convert actual and budget columns to numeric to avoid errors
-            df2[df.columns[2]] = pd.to_numeric(df2[df.columns[2]], errors='coerce').fillna(0)
-            df2[df.columns[5]] = pd.to_numeric(df2[df.columns[5]], errors='coerce').fillna(0)
-            daily_summary = df2.groupby('Date').agg({df.columns[2]: 'sum', df.columns[5]: 'sum'}).reset_index()
-            fig = go.Figure()
-            fig.add_trace(go.Scatter(x=daily_summary['Date'], y=daily_summary[df.columns[2]], mode='lines+markers', name='Actual'))
-            fig.add_trace(go.Scatter(x=daily_summary['Date'], y=daily_summary[df.columns[5]], mode='lines+markers', name='Budget'))
-            fig.update_layout(title=f"Daily {sheet_type.title()} Production", xaxis_title="Date", yaxis_title="Tonnes")
-            st.plotly_chart(fig, use_container_width=True)
-        if 'ID' in df.columns:
-            df2 = df.copy()
-            df2[df.columns[2]] = pd.to_numeric(df2[df.columns[2]], errors='coerce').fillna(0)
-            summary = df2.groupby('ID')[df.columns[2]].sum().sort_values(ascending=False).head(10)
-            fig = px.bar(x=summary.index, y=summary.values, title=f"Top Producers: {sheet_type.title()}")
-            fig.update_layout(xaxis_title="ID", yaxis_title="Tonnes")
-            st.plotly_chart(fig, use_container_width=True)
-    elif sheet_type == 'DEVELOPMENT':
-        if 'Date' in df.columns:
-            df2 = df.copy()
-            if 'Budget_Metres' in df.columns:
-                df2['Budget_Metres'] = pd.to_numeric(df2['Budget_Metres'], errors='coerce').fillna(0)
-            if 'Actual_Metres' in df.columns:
-                df2['Actual_Metres'] = pd.to_numeric(df2['Actual_Metres'], errors='coerce').fillna(0)
-            daily = df2.groupby('Date').agg({'Budget_Metres': 'sum', 'Actual_Metres': 'sum'}).reset_index()
-            fig = go.Figure()
-            fig.add_trace(go.Scatter(x=daily['Date'], y=daily['Actual_Metres'], mode='lines+markers', name='Actual'))
-            fig.add_trace(go.Scatter(x=daily['Date'], y=daily['Budget_Metres'], mode='lines+markers', name='Budget'))
-            fig.update_layout(title="Daily Development Progress", xaxis_title="Date", yaxis_title="Metres")
-            st.plotly_chart(fig, use_container_width=True)
-    elif sheet_type == 'HOISTING':
-        if 'Value' in df.columns and 'Source' in df.columns:
-            df2 = df.copy()
-            df2['Value'] = pd.to_numeric(df2['Value'], errors='coerce').fillna(0)
-            summary = df2.groupby('Source')['Value'].sum().sort_values(ascending=False)
-            fig = px.pie(values=summary.values, names=summary.index, title="Hoisting by Source")
-            st.plotly_chart(fig, use_container_width=True)
-    elif sheet_type == 'BENCHES':
-        if 'AU' in df.columns:
-            au = pd.to_numeric(df['AU'], errors='coerce').dropna()
-            fig = px.histogram(x=au, nbins=30, title="Gold Grade Distribution", labels={'x': 'AU Grade (g/t)', 'y': 'Frequency'})
-            st.plotly_chart(fig, use_container_width=True)
 
 
 def create_bulk_download(results: dict):
@@ -517,11 +505,14 @@ def create_bulk_download(results: dict):
     with zipfile.ZipFile(zip_buffer, 'w', zipfile.ZIP_DEFLATED) as zf:
         for sheet_type, sheet_result in results.get('sheets_processed', {}).items():
             if sheet_result.get('success') and not sheet_result['data'].empty:
-                csv_bytes = sheet_result['data'].to_csv(index=False).encode('utf-8')
+                clean = sanitize_for_streamlit(sheet_result['data'])
+                csv_bytes = to_csv_bytes(clean)
                 zf.writestr(f"{sheet_type.lower()}_data.csv", csv_bytes)
                 if sheet_type == 'BENCHES' and 'data_avg' in sheet_result:
-                    avg_bytes = sheet_result['data_avg'].to_csv(index=False).encode('utf-8')
+                    avg_clean = sanitize_for_streamlit(sheet_result['data_avg'])
+                    avg_bytes = to_csv_bytes(avg_clean)
                     zf.writestr("benches_average_grades.csv", avg_bytes)
+
     zip_buffer.seek(0)
     st.download_button(
         label="Download ZIP Archive",
@@ -529,6 +520,107 @@ def create_bulk_download(results: dict):
         file_name=f"mining_extraction_results_{datetime.now().strftime('%Y%m%d_%H%M%S')}.zip",
         mime="application/zip",
     )
+
+
+# ---------------------------------------------------------------------------
+# Validation and Visualization helpers (Mining Processor page)
+# ---------------------------------------------------------------------------
+def display_validation_results(validation: dict):
+    """Render validation summary and per-metric results.
+
+    Expected format:
+    {
+      'passed': int,
+      'failed': int,
+      'details': {
+         metric_name: {'passed': bool, 'target': num, 'actual': num, 'diff_percentage': float}
+      }
+    }
+    """
+    try:
+        st.subheader("Validation Summary")
+        c1, c2 = st.columns(2)
+        with c1:
+            st.metric("Tests Passed", int(validation.get('passed', 0)))
+        with c2:
+            st.metric("Tests Failed", int(validation.get('failed', 0)))
+
+        details = validation.get('details', {})
+        if isinstance(details, dict) and details:
+            for metric, result in details.items():
+                status = "✅" if result.get('passed') else "❌"
+                col1, col2, col3, col4 = st.columns(4)
+                with col1:
+                    st.text(f"{status} {metric}")
+                with col2:
+                    tgt = result.get('target', '')
+                    if isinstance(tgt, (int, float, np.floating)):
+                        st.text(f"Target: {tgt:.2f}")
+                    else:
+                        st.text(f"Target: {tgt}")
+                with col3:
+                    act = result.get('actual', '')
+                    if isinstance(act, (int, float, np.floating)):
+                        st.text(f"Actual: {act:.2f}")
+                    else:
+                        st.text(f"Actual: {act}")
+                with col4:
+                    dp = result.get('diff_percentage', None)
+                    if isinstance(dp, (int, float, np.floating)):
+                        st.text(f"Diff: {dp*100:.1f}%")
+                    else:
+                        st.text("Diff: —")
+        else:
+            st.info("No detailed validation results available.")
+    except Exception as e:
+        st.warning(f"Could not display validation results: {e}")
+
+
+def display_visualizations(df: pd.DataFrame, sheet_type: str):
+    """Lightweight visuals for extracted data. Uses sanitized df."""
+    st.subheader(f"📊 {sheet_type} Visualizations")
+    df_clean = df.copy()
+
+    # Helper: find two numeric columns
+    def pick_two_numeric(data: pd.DataFrame):
+        num_cols = [c for c in data.columns if pd.api.types.is_numeric_dtype(data[c])]
+        return num_cols[:2]
+
+    try:
+        # Time series if Date present
+        if 'Date' in df_clean.columns:
+            nc = pick_two_numeric(df_clean)
+            if len(nc) >= 1:
+                daily = df_clean.groupby('Date')[nc].sum().reset_index()
+                fig = px.line(daily, x='Date', y=nc, title=f"Daily {sheet_type} Metrics")
+                fig.update_layout(legend_title_text='', legend=dict(orientation="h", yanchor="bottom", y=1.02, xanchor="right", x=1))
+                st.plotly_chart(fig, use_container_width=True)
+
+        # Category breakdown by ID/Stope if present
+        id_col = 'ID' if 'ID' in df_clean.columns else ('Stope_ID' if 'Stope_ID' in df_clean.columns else None)
+        if id_col is not None:
+            nc = pick_two_numeric(df_clean)
+            if nc:
+                grp = df_clean.groupby(id_col)[nc[0]].sum().sort_values(ascending=False).head(10)
+                fig_bar = px.bar(x=grp.index, y=grp.values, title=f"Top 10 by {id_col}")
+                fig_bar.update_layout(xaxis_title=id_col, yaxis_title=nc[0])
+                st.plotly_chart(fig_bar, use_container_width=True)
+
+        # Special cases
+        if sheet_type.upper() == 'HOISTING' and {'Source', 'Value'}.issubset(df_clean.columns):
+            src_sum = df_clean.groupby('Source')['Value'].sum().sort_values(ascending=False)
+            fig_pie = px.pie(values=src_sum.values, names=src_sum.index, title="Hoisting by Source")
+            st.plotly_chart(fig_pie, use_container_width=True)
+
+        if sheet_type.upper() == 'BENCHES' and 'AU' in df_clean.columns:
+            au = df_clean['AU']
+            au = au[au > 0] if pd.api.types.is_numeric_dtype(au) else pd.to_numeric(au, errors='coerce').dropna()
+            if len(au) > 0:
+                fig_hist = px.histogram(x=au, nbins=30, title="Gold Grade Distribution (AU)")
+                fig_hist.update_layout(xaxis_title="AU (g/t)", yaxis_title="Frequency")
+                st.plotly_chart(fig_hist, use_container_width=True)
+    except Exception as e:
+        st.info(f"Visualizations not available: {e}")
 
 
 # ---------------------------------------------------------------------------
@@ -565,7 +657,7 @@ def run_production_dashboard_page():
         st.markdown("---")
         st.markdown("### Export Data")
         filtered_df_tmp = df[(df['Date'].dt.date >= start_date) & (df['Date'].dt.date <= end_date) & (df['Stope_ID'].isin(selected_stopes))]
-        csv = filtered_df_tmp.to_csv(index=False)
+        csv = to_csv_bytes(filtered_df_tmp)
         st.download_button(
             label="Download Filtered Data",
             data=csv,
