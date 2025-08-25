@@ -5,6 +5,7 @@ A Streamlit app that consolidates three tools into a single dashboard:
 - Mining Data Processor — validates and summarizes daily mining report data.
 - Production Dashboard — interactive charts/tables of production KPIs.
 - Daily Report Update — generates/updates a Geology Work Plan workbook from a monthly Daily Report.
+- Monthly Stope Performance — updates the Monthly Stope Performance workbook by applying 3-month rolling forecasts, actuals, and PNM/MNP updates, and returns an updated workbook for download.
 
 Main app entrypoint: `combined_app.py`.
 
@@ -13,6 +14,8 @@ Main app entrypoint: `combined_app.py`.
 - Robust module path handling for `v1.1.4/` and `v4/` modules.
 - Uses an included template workbook in `v4/` (e.g. `Geology Daily Work Plan August2025.xlsx`).
 - Works with uploaded Excel files and returns downloadable results.
+
+- Monthly Stope Performance page: in-memory Excel updates, robust parsing/ID normalization, and a timestamped download with file-size caption.
 
 ## Project structure
 ```
@@ -26,10 +29,13 @@ Main app entrypoint: `combined_app.py`.
 │  ├─ app.py                                         # standalone legacy app (not imported by combined app)
 │  ├─ config/
 │  └─ processors/
-└─ v4/
+├─ v4/
    ├─ update_daily_report_all_days.py
    ├─ August_2025_DAILY_REPORT.xlsx                  # example monthly report
    └─ Geology Daily Work Plan August2025.xlsx        # template used by the update page
+└─ Monthly_Stope_Perfomance/
+   ├─ app_v2.py                                     # legacy MSP app (reference)
+   └─ Monthly Stope Performance*.xlsx               # example workbooks
 ```
 
 ## Local setup
@@ -37,8 +43,16 @@ Requirements: Python 3.10–3.11 recommended.
 
 ```bash
 pip install -r requirements.txt
+pip install pyarrow==15.0.2    # recommended for stable Arrow serialization
 streamlit run combined_app.py
 ```
+
+## Monthly Stope Performance usage
+1. Open the app and select "Monthly Stope Performance" in the sidebar Navigation.
+2. Upload the MSP workbook (.xlsx) to be updated.
+3. Optionally upload supporting inputs (e.g., 3‑month rolling forecasts, actual physicals, daily report, underground breaking plan, tramming detail reports).
+4. Click the process/update action to apply updates to the workbook.
+5. Download the updated Excel; the filename includes a timestamp and a file-size caption is shown.
 
 ## Streamlit Community Cloud deployment
 1. Push this folder to a public GitHub repository (see name ideas below).
@@ -57,5 +71,7 @@ Notes:
 - Template not found: Confirm a file matching `Geology Daily Work Plan*.xlsx` exists in `v4/`.
 - Import errors: The app auto-adds `v1.1.4/` and `v4/` to `sys.path`. Keep the directories alongside `combined_app.py`.
 
+- Arrow serialization errors: install `pyarrow==15.0.2` (recommended) and restart; ensure you're uploading standard Excel files.
+- MSP workbook schema: confirm sheets `SUMMARY` and `Stopes PNM & MNP` exist and are not protected; the page updates these sheets in-place.
 ## License
 Add your preferred license (e.g., MIT) if needed.
