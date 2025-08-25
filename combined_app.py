@@ -71,6 +71,12 @@ dashboard:
    the user or automatically derived from the month contained in the
    uploaded daily report.
 
+4. **Monthly Stope Performance Updater** – Integrates the standalone
+   Monthly Stope Performance app. Upload the MSP workbook and supporting
+   files (3‑month rolling forecasts, actual physicals, Mining & Milling
+   Plans, Tramming reports, and optional August daily report) to update
+   the SUMMARY sheet forecasts/actuals and the PNM/MNP sheet.
+
 To run this app locally, install the required dependencies (streamlit,
 openpyxl, pandas, numpy, plotly) and launch with:
 
@@ -90,6 +96,9 @@ import sys
 import shutil
 import tempfile
 from datetime import datetime, date
+from io import BytesIO
+from typing import Dict, Tuple, Optional, List, Set
+import openpyxl
 
 
 
@@ -312,6 +321,530 @@ def copy_template_workbook() -> str:
     shutil.copy(template_path, dest_path)
     return dest_path
 
+
+# ---------------------------------------------------------------------------
+# Monthly Stope Performance helpers (parsing and workbook updates)
+# ---------------------------------------------------------------------------
+def _normalize_id(id_str: str) -> str:
+    """Normalise stope IDs by replacing underscores with spaces, collapsing
+    multiple spaces, stripping whitespace and converting to uppercase.
+
+    Many of the source files use slightly different naming conventions
+    (e.g. "1L_W28_STOPE" versus "1L W28 STOPE").  This helper reduces those
+    inconsistencies so IDs can be matched reliably across different sheets.
+    """
+    if not id_str:
+        return ""
+    cleaned = id_str.replace("_", " ").replace("\n", " ")
+    cleaned = " ".join(cleaned.split())
+    return cleaned.strip().upper()
+
+
+def _month_add(base_month: int, offset: int) -> int:
+    """Return the month index after adding an offset.  Keeps result in 1–12.
+
+    Example: ``_month_add(11, 2) -> 1`` (January of next year).
+    """
+    return ((base_month - 1 + offset) % 12) + 1
+
+
+def _extract_month_from_filename(filename: str) -> Optional[int]:
+    """Attempt to infer the month index (1–12) from a 3‑month rolling filename.
+
+    The naming convention assumed is "3 Months Rolling_<Month> <Year>.xlsx"
+    (case insensitive).  Returns 1 for January through 12 for December,
+    or ``None`` if parsing fails.
+    """
+    m = re.search(r"3\s*Months\s*Rolling[_\s-]*([A-Za-z]+)", filename)
+    if not m:
+        return None
+    month_name = m.group(1).strip().lower()
+    try:
+        return datetime.strptime(month_name, "%B").month
+    except ValueError:
+        try:
+            return datetime.strptime(month_name, "%b").month
+        except ValueError:
+            return None
+
+
+def parse_three_month_rolling(file_bytes: BytesIO, filename: str) -> Optional[Dict[int, Tuple[float, float, float]]]:
+    """Parse a 3‑month rolling forecast workbook for forecast data.
+
+    Returns a mapping of month indices (1–12) to tuples ``(tonnes, grade, gold)``.
+    The first month is inferred from the filename and subsequent two months
+    follow sequentially.  If the workbook structure cannot be parsed,
+    ``None`` is returned.
+    """
+    start_month = _extract_month_from_filename(filename)
+    if start_month is None:
+        return None
+    try:
+        wb = openpyxl.load_workbook(file_bytes, data_only=True)
+    except Exception:
+        return None
+    sheet = wb.active
+    if "MINE PLAN" in wb.sheetnames:
+        sheet = wb["MINE PLAN"]
+    tonnes: List[float] = []
+    grades: List[float] = []
+    golds: List[float] = []
+    for row in sheet.iter_rows(values_only=True):
+        if not row or len(row) < 2 or row[1] is None:
+            continue
+        label = str(row[1]).strip().lower()
+        if label == "tonnes (t)":
+            vals: List[float] = []
+            for val in row[2:]:
+                if isinstance(val, (int, float)):
+                    vals.append(float(val))
+                if len(vals) >= 3:
+                    break
+            if vals:
+                tonnes = vals
+        elif label.startswith("grade"):
+            vals = []
+            for val in row[2:]:
+                if isinstance(val, (int, float)):
+                    vals.append(float(val))
+                if len(vals) >= 3:
+                    break
+            if vals:
+                grades = vals
+        elif label.startswith("3 month rolling") or "gold" in label:
+            vals = []
+            for val in row[2:]:
+                if isinstance(val, (int, float)):
+                    vals.append(float(val))
+                if len(vals) >= 3:
+                    break
+            if vals:
+                golds = vals
+        if tonnes and grades and golds:
+            break
+    if not golds:
+        for row in sheet.iter_rows(values_only=True):
+            if row and len(row) > 1 and isinstance(row[1], str) and "gold" in row[1].lower():
+                vals: List[float] = []
+                for val in row[2:]:
+                    if isinstance(val, (int, float)):
+                        vals.append(float(val))
+                    if len(vals) >= 3:
+                        break
+                if vals:
+                    golds = vals
+                    break
+    if not tonnes or not grades or not golds:
+        return None
+    while len(tonnes) < 3:
+        tonnes.append(0.0)
+    while len(grades) < 3:
+        grades.append(0.0)
+    while len(golds) < 3:
+        golds.append(0.0)
+    forecasts: Dict[int, Tuple[float, float, float]] = {}
+    for offset in range(3):
+        month = _month_add(start_month, offset)
+        forecasts[month] = (tonnes[offset], grades[offset], golds[offset])
+    return forecasts
+
+
+def parse_actual_physical(file_bytes: BytesIO) -> Optional[Tuple[float, float, float, int]]:
+    """Extract actuals from a single monthly physicals workbook.
+
+    Returns ``(tonnes, grade, gold, month_index)`` or ``None`` if the
+    sheet cannot be parsed.  The month index is taken from a datetime near
+    the top of the Dashboard sheet.
+    """
+    try:
+        wb = openpyxl.load_workbook(file_bytes, data_only=True)
+    except Exception:
+        return None
+    if "Dashboard" not in wb.sheetnames:
+        return None
+    sheet = wb["Dashboard"]
+    month_index: Optional[int] = None
+    for row in sheet.iter_rows(min_row=1, max_row=6, values_only=True):
+        for val in row:
+            if isinstance(val, datetime):
+                month_index = val.month
+                break
+        if month_index:
+            break
+    if not month_index:
+        return None
+    tonne_value = grade_value = gold_value = None
+    found_plant = False
+    for row in sheet.iter_rows(values_only=True):
+        if not found_plant and row and row[0] and "plant physicals" in str(row[0]).lower():
+            found_plant = True
+            continue
+        if found_plant and row and isinstance(row[0], str):
+            low = row[0].lower().strip()
+            if low.startswith("ore milled"):
+                for val in row[1:]:
+                    if isinstance(val, (int, float)):
+                        tonne_value = float(val)
+                        break
+            elif low.startswith("mill feed grade"):
+                for val in row[1:]:
+                    if isinstance(val, (int, float)):
+                        grade_value = float(val)
+                        break
+            elif low.startswith("gold recovered"):
+                for val in row[1:]:
+                    if isinstance(val, (int, float)):
+                        gold_value = float(val)
+                        break
+        if tonne_value is not None and grade_value is not None and gold_value is not None:
+            break
+    if tonne_value is None or grade_value is None or gold_value is None:
+        return None
+    return tonne_value, grade_value, gold_value, month_index
+
+
+def parse_august_daily_report(file_bytes: BytesIO) -> Optional[Tuple[float, float, float]]:
+    """Parse the August daily report and return the Actual MTD values.
+
+    Looks for the ``Tramming`` sheet and reads rows labelled
+    ``Trammed (t)``, ``Grade (g/t)``, and ``Gold (kg)`` from the column
+    headed “Actual”.
+    """
+    try:
+        wb = openpyxl.load_workbook(file_bytes, data_only=True)
+    except Exception:
+        return None
+    if "Tramming" not in wb.sheetnames:
+        return None
+    sheet = wb["Tramming"]
+    tonnes = grade = gold = None
+    header_row_index = None
+    for i, row in enumerate(sheet.iter_rows(values_only=True), start=1):
+        if row and any(isinstance(val, str) and 'mtd' in val.lower() for val in row):
+            header_row_index = i
+            break
+    if header_row_index is None:
+        return None
+    header_row = [val if isinstance(val, str) else "" for val in sheet[header_row_index]]
+    actual_col = None
+    for idx, val in enumerate(header_row):
+        if isinstance(val, str) and val.lower().strip() == 'actual':
+            actual_col = idx + 1
+            break
+    if actual_col is None:
+        actual_col = 4
+    for row in sheet.iter_rows(min_row=header_row_index + 1, max_row=header_row_index + 10, values_only=False):
+        label_cell = row[1].value if len(row) > 1 else None
+        if isinstance(label_cell, str):
+            low = label_cell.lower()
+            if 'trammed' in low:
+                val = row[actual_col - 1].value
+                if isinstance(val, (int, float)):
+                    tonnes = float(val)
+            elif 'grade' in low:
+                val = row[actual_col - 1].value
+                if isinstance(val, (int, float)):
+                    grade = float(val)
+            elif 'gold' in low:
+                val = row[actual_col - 1].value
+                if isinstance(val, (int, float)):
+                    gold = float(val)
+    if tonnes is None or grade is None or gold is None:
+        return None
+    return tonnes, grade, gold
+
+
+def parse_underground_breaking_plan(file_bytes: BytesIO) -> Set[str]:
+    """Extract stope IDs from an Underground Breaking Plan workbook."""
+    ids: Set[str] = set()
+    try:
+        wb = openpyxl.load_workbook(file_bytes, data_only=True)
+    except Exception:
+        return ids
+    target_name = None
+    for name in wb.sheetnames:
+        if 'underground breaking plan' in name.lower():
+            target_name = name
+            break
+    if not target_name:
+        return ids
+    ws = wb[target_name]
+    for row in ws.iter_rows(values_only=True):
+        if row and len(row) > 1:
+            second = row[1]
+            if isinstance(second, str) and second.strip().lower() == 'stoping tons':
+                stope = row[0]
+                if isinstance(stope, str):
+                    ids.add(_normalize_id(stope))
+    return ids
+
+
+def parse_tramming_detail(file_bytes: BytesIO) -> Optional[Tuple[int, Dict[str, Tuple[float, float, float, float, float, float]]]]:
+    """Parse detailed tramming daily report for stope-level budgets and actuals.
+
+    Returns ``(month_index, data)`` where ``data`` maps normalised stope IDs
+    to ``(budget_tonnes, actual_tonnes, budget_grade, actual_grade, budget_gold, actual_gold)``.
+    """
+    try:
+        wb = openpyxl.load_workbook(file_bytes, data_only=True)
+    except Exception:
+        return None
+    sheet_name = None
+    for name in wb.sheetnames:
+        if 'tramming' in name.lower():
+            sheet_name = name
+            break
+    if not sheet_name:
+        return None
+    ws = wb[sheet_name]
+    month_idx: Optional[int] = None
+    for row in ws.iter_rows(values_only=True):
+        if not row:
+            continue
+        for i, val in enumerate(row):
+            if isinstance(val, str) and 'month' in val.lower():
+                if i + 1 < len(row) and isinstance(row[i + 1], datetime):
+                    month_idx = row[i + 1].month
+                    break
+        if month_idx:
+            break
+    if not month_idx:
+        return None
+    data: Dict[str, Tuple[float, float, float, float, float, float]] = {}
+    rows = list(ws.iter_rows(values_only=True))
+    n = len(rows)
+    i = 0
+    while i < n:
+        row = rows[i]
+        stope_id = None
+        if row:
+            for cell in row:
+                if isinstance(cell, str) and 'stope' in cell.lower():
+                    stope_id = _normalize_id(cell)
+                    break
+        if stope_id:
+            budget_tonnes = actual_tonnes = 0.0
+            budget_grade = actual_grade = 0.0
+            budget_gold = actual_gold = 0.0
+            j = i + 1
+            while j < n:
+                next_row = rows[j]
+                if any(isinstance(c, str) and 'stope' in c.lower() for c in next_row if c):
+                    break
+                if next_row:
+                    for k, val in enumerate(next_row):
+                        if isinstance(val, str):
+                            label = val.strip().lower()
+                            if label == 'budget (t)':
+                                for x in next_row[k + 1:]:
+                                    if isinstance(x, (int, float)):
+                                        budget_tonnes = float(x)
+                                        break
+                            elif label == 'actual (t)':
+                                for x in next_row[k + 1:]:
+                                    if isinstance(x, (int, float)):
+                                        actual_tonnes = float(x)
+                                        break
+                            elif label in ('budget (g/t)', 'budget (gpt)'):
+                                for x in next_row[k + 1:]:
+                                    if isinstance(x, (int, float)):
+                                        budget_grade = float(x)
+                                        break
+                            elif label in ('actual (g/t)', 'actual (gpt)'):
+                                for x in next_row[k + 1:]:
+                                    if isinstance(x, (int, float)):
+                                        actual_grade = float(x)
+                                        break
+                            elif label == 'budget (kg)':
+                                for x in next_row[k + 1:]:
+                                    if isinstance(x, (int, float)):
+                                        budget_gold = float(x)
+                                        break
+                            elif label == 'actual (kg)':
+                                for x in next_row[k + 1:]:
+                                    if isinstance(x, (int, float)):
+                                        actual_gold = float(x)
+                                        break
+                j += 1
+            data[stope_id] = (budget_tonnes, actual_tonnes, budget_grade, actual_grade, budget_gold, actual_gold)
+            i = j
+            continue
+        i += 1
+    return month_idx, data
+
+
+def update_pnm_mnp_sheet(wb: openpyxl.Workbook,
+                         pnm_data: Dict[str, Tuple[float, float, float]],
+                         mnp_data: Dict[str, Tuple[float, float, float]],
+                         month_idx: int) -> None:
+    """Update the ``Stopes PNM & MNP`` sheet with PNM and MNP values for a month."""
+    if 'Stopes PNM & MNP' not in wb.sheetnames:
+        return
+    ws = wb['Stopes PNM & MNP']
+
+    def build_month_map(start_row: int) -> Dict[int, int]:
+        month_map: Dict[int, int] = {}
+        header_row = ws[start_row + 1]
+        for col_idx, cell in enumerate(header_row, start=1):
+            if isinstance(cell.value, datetime):
+                month_map[cell.value.month] = col_idx
+        return month_map
+
+    pnm_start = mnp_start = None
+    for idx, row in enumerate(ws.iter_rows(values_only=True), start=1):
+        if row and len(row) > 1 and isinstance(row[1], str):
+            val = row[1].strip().lower()
+            if val == 'planned not mined' and pnm_start is None:
+                pnm_start = idx
+            elif val == 'mined not planned' and mnp_start is None:
+                mnp_start = idx
+        if pnm_start and mnp_start:
+            break
+    if pnm_start is None or mnp_start is None:
+        return
+
+    pnm_month_map = build_month_map(pnm_start + 1)
+    mnp_month_map = build_month_map(mnp_start + 1)
+    pnm_col_start = pnm_month_map.get(month_idx)
+    mnp_col_start = mnp_month_map.get(month_idx)
+    if not pnm_col_start and not mnp_col_start:
+        return
+
+    def find_stope_rows(section_start: int) -> Tuple[int, int]:
+        start = section_start + 3
+        end = start - 1
+        for r in range(start, ws.max_row + 1):
+            val = ws.cell(row=r, column=2).value
+            if val is None:
+                break
+            if isinstance(val, str) and val.strip().lower() == 'total':
+                end = r - 1
+                break
+        return start, end
+
+    pnm_stope_start, pnm_stope_end = find_stope_rows(pnm_start)
+    mnp_stope_start, mnp_stope_end = find_stope_rows(mnp_start)
+
+    def get_or_create_row(section_start: int, stope_start: int, stope_end: int, stope_id: str) -> int:
+        for r in range(stope_start, stope_end + 1):
+            val = ws.cell(row=r, column=2).value
+            if isinstance(val, str) and _normalize_id(val) == stope_id:
+                return r
+        insert_row = stope_end + 1
+        ws.insert_rows(insert_row)
+        ws.cell(row=insert_row, column=2, value=stope_id)
+        return insert_row
+
+    if pnm_col_start:
+        for stope_id, (diff_tonnes, diff_grade, diff_gold) in pnm_data.items():
+            row_idx = get_or_create_row(pnm_start, pnm_stope_start, pnm_stope_end, stope_id)
+            ws.cell(row=row_idx, column=pnm_col_start, value=diff_tonnes)
+            ws.cell(row=row_idx, column=pnm_col_start + 1, value=diff_grade)
+            ws.cell(row=row_idx, column=pnm_col_start + 2, value=diff_gold)
+            if row_idx > pnm_stope_end:
+                pnm_stope_end = row_idx
+        total_row = pnm_stope_end + 1
+        tot_tonnes = 0.0
+        weighted_grade_sum = 0.0
+        tot_gold = 0.0
+        for r in range(pnm_stope_start, pnm_stope_end + 1):
+            v_t = ws.cell(row=r, column=pnm_col_start).value or 0
+            v_g = ws.cell(row=r, column=pnm_col_start + 1).value or 0
+            v_au = ws.cell(row=r, column=pnm_col_start + 2).value or 0
+            try:
+                v_t = float(v_t)
+            except Exception:
+                v_t = 0.0
+            try:
+                v_g = float(v_g)
+            except Exception:
+                v_g = 0.0
+            try:
+                v_au = float(v_au)
+            except Exception:
+                v_au = 0.0
+            tot_tonnes += v_t
+            weighted_grade_sum += v_t * v_g
+            tot_gold += v_au
+        ws.cell(row=total_row, column=pnm_col_start, value=tot_tonnes)
+        avg_grade = weighted_grade_sum / tot_tonnes if tot_tonnes else 0
+        ws.cell(row=total_row, column=pnm_col_start + 1, value=avg_grade)
+        ws.cell(row=total_row, column=pnm_col_start + 2, value=tot_gold)
+
+    if mnp_col_start:
+        for stope_id, (act_tonnes, act_grade, act_gold) in mnp_data.items():
+            row_idx = get_or_create_row(mnp_start, mnp_stope_start, mnp_stope_end, stope_id)
+            ws.cell(row=row_idx, column=mnp_col_start, value=act_tonnes)
+            ws.cell(row=row_idx, column=mnp_col_start + 1, value=act_grade)
+            ws.cell(row=row_idx, column=mnp_col_start + 2, value=act_gold)
+            if row_idx > mnp_stope_end:
+                mnp_stope_end = row_idx
+        total_row = mnp_stope_end + 1
+        tot_tonnes = 0.0
+        weighted_grade_sum = 0.0
+        tot_gold = 0.0
+        for r in range(mnp_stope_start, mnp_stope_end + 1):
+            v_t = ws.cell(row=r, column=mnp_col_start).value or 0
+            v_g = ws.cell(row=r, column=mnp_col_start + 1).value or 0
+            v_au = ws.cell(row=r, column=mnp_col_start + 2).value or 0
+            try:
+                v_t = float(v_t)
+            except Exception:
+                v_t = 0.0
+            try:
+                v_g = float(v_g)
+            except Exception:
+                v_g = 0.0
+            try:
+                v_au = float(v_au)
+            except Exception:
+                v_au = 0.0
+            tot_tonnes += v_t
+            weighted_grade_sum += v_t * v_g
+            tot_gold += v_au
+        ws.cell(row=total_row, column=mnp_col_start, value=tot_tonnes)
+        avg_grade = weighted_grade_sum / tot_tonnes if tot_tonnes else 0
+        ws.cell(row=total_row, column=mnp_col_start + 1, value=avg_grade)
+        ws.cell(row=total_row, column=mnp_col_start + 2, value=tot_gold)
+
+
+def update_msp_workbook(msp_bytes: BytesIO,
+                        forecasts: Dict[int, Tuple[float, float, float]],
+                        actuals: Dict[int, Tuple[float, float, float]]) -> BytesIO:
+    """Update the MSP SUMMARY sheet with forecasts and actuals and return bytes."""
+    wb = openpyxl.load_workbook(msp_bytes)
+    if "SUMMARY" not in wb.sheetnames:
+        raise ValueError("SUMMARY sheet not found in MSP workbook")
+    ws = wb["SUMMARY"]
+    forecast_start = actual_start = None
+    for row_idx in range(1, ws.max_row + 1):
+        row_label = ws.cell(row=row_idx, column=1).value
+        row_type = ws.cell(row=row_idx, column=2).value
+        if forecast_start is None and row_label == 'SHORT-TERM FORECAST' and row_type == 'Tonnes (t)':
+            forecast_start = row_idx
+        if actual_start is None and row_label == 'ACTUAL' and row_type == 'Tonnes (t)':
+            actual_start = row_idx
+        if forecast_start and actual_start:
+            break
+    if forecast_start is None or actual_start is None:
+        raise ValueError("Could not locate forecast or actual rows in SUMMARY")
+    forecast_rows = (forecast_start, forecast_start + 1, forecast_start + 2)
+    actual_rows = (actual_start, actual_start + 1, actual_start + 2)
+    jan_col = 3
+    for month_idx, (t, g, au) in forecasts.items():
+        col = jan_col + month_idx - 1
+        ws.cell(row=forecast_rows[0], column=col).value = t
+        ws.cell(row=forecast_rows[1], column=col).value = g
+        ws.cell(row=forecast_rows[2], column=col).value = au
+    for month_idx, (t, g, au) in actuals.items():
+        col = jan_col + month_idx - 1
+        ws.cell(row=actual_rows[0], column=col).value = t
+        ws.cell(row=actual_rows[1], column=col).value = g
+        ws.cell(row=actual_rows[2], column=col).value = au
+    out = BytesIO()
+    wb.save(out)
+    out.seek(0)
+    return out
 
 # ---------------------------------------------------------------------------
 # Mining Data Processor page
@@ -1084,6 +1617,114 @@ def run_daily_report_update_page():
 
 
 # ---------------------------------------------------------------------------
+# Monthly Stope Performance page
+# ---------------------------------------------------------------------------
+def run_monthly_stope_performance_page():
+    """Integrate the Monthly Stope Performance updater with consistent UI.
+
+    Upload MSP workbook and optional supporting files, parse forecasts/actuals,
+    update SUMMARY and PNM/MNP sheets, and provide a download of the updated file.
+    """
+    st.markdown("## 📈 Monthly Stope Performance Updater")
+    st.markdown(
+        "Upload the MSP workbook (.xlsx) and optional supporting files: 3‑Month Rolling forecasts, "
+        "Actual Physicals, Mining & Milling Plan (for planned stopes), and Tramming Daily Reports (for PNM/MNP). "
+        "Optionally include the August Daily Report to populate August actuals."
+    )
+
+    msp_file = st.file_uploader("Monthly Stope Performance workbook (required)", type=["xlsx"], key="msp_main")
+    three_month_files = st.file_uploader("3‑Month Rolling files (optional, multiple)", type=["xlsx"], accept_multiple_files=True, key="msp_three")
+    actual_files = st.file_uploader("Actual Physicals files (optional, multiple)", type=["xlsx"], accept_multiple_files=True, key="msp_actual")
+    plan_files = st.file_uploader("Mining & Milling Plan files (optional, multiple)", type=["xlsx"], accept_multiple_files=True, key="msp_plan")
+    tramming_files = st.file_uploader("Tramming Daily Report files (optional, multiple)", type=["xlsx"], accept_multiple_files=True, key="msp_tramming")
+    daily_file = st.file_uploader("August Daily Report (optional)", type=["xlsx"], key="msp_daily")
+
+    if st.button("Update Workbook", key="msp_update_btn"):
+        if msp_file is None:
+            st.error("Please upload the Monthly Stope Performance workbook.")
+            return
+
+        forecasts: Dict[int, Tuple[float, float, float]] = {}
+        for uploaded in (three_month_files or []):
+            parsed = parse_three_month_rolling(BytesIO(uploaded.getvalue()), uploaded.name)
+            if parsed:
+                for month_idx, triple in parsed.items():
+                    forecasts[month_idx] = triple
+
+        actuals: Dict[int, Tuple[float, float, float]] = {}
+        for uploaded in (actual_files or []):
+            parsed = parse_actual_physical(BytesIO(uploaded.getvalue()))
+            if parsed:
+                tonnes, grade, gold, month_idx = parsed
+                actuals[month_idx] = (tonnes, grade, gold)
+
+        if daily_file is not None:
+            parsed = parse_august_daily_report(BytesIO(daily_file.getvalue()))
+            if parsed:
+                tonnes, grade, gold = parsed
+                actuals[8] = (tonnes, grade, gold)
+
+        planned_ids: Set[str] = set()
+        for uploaded in (plan_files or []):
+            ids = parse_underground_breaking_plan(BytesIO(uploaded.getvalue()))
+            planned_ids.update(ids)
+
+        pnm_by_month: Dict[int, Dict[str, Tuple[float, float, float]]] = {}
+        mnp_by_month: Dict[int, Dict[str, Tuple[float, float, float]]] = {}
+        for uploaded in (tramming_files or []):
+            res = parse_tramming_detail(BytesIO(uploaded.getvalue()))
+            if res:
+                month_idx, tramming_data = res
+                pnm_data: Dict[str, Tuple[float, float, float]] = {}
+                mnp_data: Dict[str, Tuple[float, float, float]] = {}
+                for stope_id, (b_t, a_t, b_g, a_g, b_au, a_au) in tramming_data.items():
+                    diff_t = (b_t or 0) - (a_t or 0)
+                    diff_g = (b_g or 0) - (a_g or 0)
+                    diff_au = (b_au or 0) - (a_au or 0)
+                    if diff_t != 0 or diff_g != 0 or diff_au != 0:
+                        pnm_data[stope_id] = (diff_t, diff_g, diff_au)
+                    if stope_id not in planned_ids:
+                        mnp_data[stope_id] = (a_t or 0, a_g or 0, a_au or 0)
+                if month_idx in pnm_by_month:
+                    pnm_by_month[month_idx].update(pnm_data)
+                else:
+                    pnm_by_month[month_idx] = pnm_data
+                if month_idx in mnp_by_month:
+                    mnp_by_month[month_idx].update(mnp_data)
+                else:
+                    mnp_by_month[month_idx] = mnp_data
+
+        try:
+            updated_bytes = update_msp_workbook(BytesIO(msp_file.getvalue()), forecasts, actuals)
+        except Exception as exc:
+            st.error(f"Failed to update SUMMARY: {exc}")
+            return
+
+        try:
+            wb = openpyxl.load_workbook(updated_bytes)
+        except Exception as exc:
+            st.error(f"Failed to open updated workbook for PNM/MNP updates: {exc}")
+            return
+
+        for month_idx, pnm_data in pnm_by_month.items():
+            mnp_data = mnp_by_month.get(month_idx, {})
+            update_pnm_mnp_sheet(wb, pnm_data, mnp_data, month_idx)
+
+        final_bytes = BytesIO()
+        wb.save(final_bytes)
+        final_bytes.seek(0)
+        out_name = f"Monthly_Stope_Performance_Updated_{datetime.now().strftime('%Y%m%d_%H%M%S')}.xlsx"
+        st.success("Workbook updated successfully!")
+        st.download_button(
+            label="Download Updated MSP Workbook",
+            data=final_bytes.getvalue(),
+            file_name=out_name,
+            mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+            key="msp_download",
+        )
+        st.caption(f"File size: {final_bytes.getbuffer().nbytes:,} bytes | Forecast months: {len(forecasts)} | Actual months: {len(actuals)} | PNM months: {len(pnm_by_month)} | MNP months: {len(mnp_by_month)}")
+
+# ---------------------------------------------------------------------------
 # Main entry point
 # ---------------------------------------------------------------------------
 def main():
@@ -1093,7 +1734,12 @@ def main():
     st.sidebar.title("Navigation")
     page = st.sidebar.radio(
         "Choose a page:",
-        ["Mining Data Processor", "Production Dashboard", "Daily Report Update"],
+        [
+            "Mining Data Processor",
+            "Production Dashboard",
+            "Daily Report Update",
+            "Monthly Stope Performance",
+        ],
     )
     if page == "Mining Data Processor":
         run_mining_processor_page()
@@ -1101,6 +1747,8 @@ def main():
         run_production_dashboard_page()
     elif page == "Daily Report Update":
         run_daily_report_update_page()
+    elif page == "Monthly Stope Performance":
+        run_monthly_stope_performance_page()
 
 
 if __name__ == '__main__':
