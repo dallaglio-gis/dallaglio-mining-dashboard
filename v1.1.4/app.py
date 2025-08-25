@@ -55,58 +55,46 @@ def sanitize_for_streamlit(df: pd.DataFrame) -> pd.DataFrame:
 
     out = df.copy()
 
-    # 1) Decode bytes & normalize placeholders
+    # First pass: decode all bytes in object columns
     for col in out.columns:
         if out[col].dtype == object:
-            # First decode bytes
             out[col] = out[col].map(_decode_bytes)
-            
-            # Convert all to string first to handle mixed types
-            out[col] = out[col].astype(str)
-            
-            # Then normalize placeholders
-            out[col] = out[col].replace(
-                {
-                    "": pd.NA,
-                    " ": pd.NA,
-                    "-": pd.NA,
-                    "–": pd.NA,
-                    "—": pd.NA,
-                    "N/A": pd.NA,
-                    "n/a": pd.NA,
-                    "NA": pd.NA,
-                    "na": pd.NA,
-                    "nan": pd.NA,
-                    "None": pd.NA,
-                    "none": pd.NA,
-                }
-            )
 
-    # 2) Dates
-    if "Date" in out.columns:
-        out["Date"] = pd.to_datetime(out["Date"], errors="coerce")
-
-    # 3) Numeric-ish columns (by name hint) - more aggressive cleaning
+    # Second pass: handle column types
     for col in out.columns:
-        if NUMERIC_COL_HINT.search(col):
-            # Clean up the column first
+        # Skip if already properly typed numeric
+        if pd.api.types.is_numeric_dtype(out[col]):
+            # Ensure no NaN values in numeric columns
+            out[col] = out[col].fillna(0.0)
+            continue
+        
+        # Check if this should be a numeric column
+        if NUMERIC_COL_HINT.search(col) or any(hint in col.lower() for hint in ['actual', 'budget', 'mtd']):
+            # For columns that should be numeric, be very aggressive
             if out[col].dtype == object:
-                # Remove any remaining non-numeric characters except decimal points and minus signs
-                out[col] = out[col].astype(str).str.replace(r'[^\d\.\-]', '', regex=True)
-                # Replace empty strings with NaN
-                out[col] = out[col].replace('', pd.NA)
+                # Convert everything to string first, then clean
+                out[col] = out[col].astype(str)
+                # Replace all non-numeric placeholders
+                out[col] = out[col].replace(['', ' ', '-', '–', '—', 'N/A', 'n/a', 'NA', 
+                                            'na', 'None', 'none', 'nan', 'NaN'], '0')
+                # Remove any remaining non-numeric characters
+                out[col] = out[col].str.replace(r'[^\d\.\-]', '', regex=True)
+                # Replace empty strings with '0'
+                out[col] = out[col].replace('', '0')
             
-            # Convert to numeric
-            out[col] = pd.to_numeric(out[col], errors="coerce")
+            # Convert to float64 explicitly
+            out[col] = pd.to_numeric(out[col], errors='coerce').fillna(0.0).astype('float64')
             
-            # Ensure no mixed types remain
-            out[col] = out[col].astype('float64')
-
-    # 4) Ensure all remaining object columns are clean strings
-    for col in out.columns:
-        if out[col].dtype == object:
-            # Fill NaN with empty string and ensure all are strings
+        # Check if this is a date column
+        elif 'date' in col.lower():
+            out[col] = pd.to_datetime(out[col], errors="coerce")
+            
+        # For remaining object columns (text columns)
+        else:
+            # Ensure consistent string type
             out[col] = out[col].fillna("").astype(str)
+            # Clean up nan strings
+            out[col] = out[col].replace(['nan', 'None'], '')
 
     return out
 
@@ -399,11 +387,8 @@ def display_visualizations(df: pd.DataFrame, sheet_type: str):
         if len(df.columns) >= 6:
             # Daily production trend
             if 'Date' in df.columns:
-                # Ensure numeric columns are properly converted
+                # Work with already sanitized data - no need to re-convert
                 df_clean = df.copy()
-                # Convert columns to numeric, replacing non-numeric values with 0
-                df_clean[df.columns[2]] = pd.to_numeric(df_clean[df.columns[2]], errors='coerce').fillna(0)
-                df_clean[df.columns[5]] = pd.to_numeric(df_clean[df.columns[5]], errors='coerce').fillna(0)
                 
                 daily_summary = df_clean.groupby('Date').agg({
                     df.columns[2]: 'sum',  # Actual tonnes
@@ -427,8 +412,7 @@ def display_visualizations(df: pd.DataFrame, sheet_type: str):
             
             # Top producers
             if 'ID' in df.columns:
-                # Ensure numeric column is properly converted
-                df_clean[df.columns[2]] = pd.to_numeric(df_clean[df.columns[2]], errors='coerce').fillna(0)
+                # Already sanitized - no need to re-convert
                 producer_summary = df_clean.groupby('ID')[df.columns[2]].sum().sort_values(ascending=False).head(10)
                 
                 fig = px.bar(x=producer_summary.index, 
@@ -440,12 +424,8 @@ def display_visualizations(df: pd.DataFrame, sheet_type: str):
     elif sheet_type == 'DEVELOPMENT':
         # Development progress
         if 'Date' in df.columns and len(df.columns) >= 4:
-            # Ensure numeric columns are properly converted
+            # Already sanitized - use directly
             df_clean = df.copy()
-            if 'Budget_Metres' in df.columns:
-                df_clean['Budget_Metres'] = pd.to_numeric(df_clean['Budget_Metres'], errors='coerce').fillna(0)
-            if 'Actual_Metres' in df.columns:
-                df_clean['Actual_Metres'] = pd.to_numeric(df_clean['Actual_Metres'], errors='coerce').fillna(0)
             
             daily_dev = df_clean.groupby('Date').agg({
                 'Budget_Metres': 'sum',
@@ -470,9 +450,8 @@ def display_visualizations(df: pd.DataFrame, sheet_type: str):
     elif sheet_type == 'HOISTING':
         # Hoisting metrics
         if 'Value' in df.columns and 'Source' in df.columns:
-            # Ensure numeric column is properly converted
+            # Already sanitized - use directly
             df_clean = df.copy()
-            df_clean['Value'] = pd.to_numeric(df_clean['Value'], errors='coerce').fillna(0)
             source_summary = df_clean.groupby('Source')['Value'].sum().sort_values(ascending=False)
             
             fig = px.pie(values=source_summary.values, 
@@ -483,13 +462,15 @@ def display_visualizations(df: pd.DataFrame, sheet_type: str):
     elif sheet_type == 'BENCHES':
         # Grade distribution
         if 'AU' in df.columns:
-            au_numeric = pd.to_numeric(df['AU'], errors='coerce').dropna()
+            # Already sanitized - just filter out zeros if needed
+            au_numeric = df['AU'][df['AU'] > 0]  # Only show non-zero grades
             
-            fig = px.histogram(x=au_numeric, 
-                             title="Gold Grade Distribution",
-                             nbins=30)
-            fig.update_layout(xaxis_title="AU Grade (g/t)", yaxis_title="Frequency")
-            st.plotly_chart(fig, use_container_width=True)
+            if len(au_numeric) > 0:
+                fig = px.histogram(x=au_numeric, 
+                                 title="Gold Grade Distribution",
+                                 nbins=30)
+                fig.update_layout(xaxis_title="AU Grade (g/t)", yaxis_title="Frequency")
+                st.plotly_chart(fig, use_container_width=True)
 
 def create_bulk_download(results: Dict):
     """Create a ZIP file with all results"""
