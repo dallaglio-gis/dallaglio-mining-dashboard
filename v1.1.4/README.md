@@ -1,27 +1,27 @@
-
-# Mining Daily Report Processing Dashboard
+# Mining Daily Report Processing Dashboard 🎯
 
 A comprehensive Streamlit application for automated mining daily report data extraction and processing.
 
 ## 🎯 Overview
 
-This tool consolidates all your mining data extraction needs into one streamlined interface, processing all 5 key sheets from your daily reports:
+This tool consolidates all your mining data extraction needs into one streamlined interface, processing all 6 key sheets from your daily reports:
 - **STOPING**: Daily actual/budget tonnes, grade, gold data
 - **TRAMMING**: Tramming operations with similar structure to stoping  
 - **DEVELOPMENT**: Budget and actual development metres
 - **HOISTING**: Complex source/metric1/metric2/value format data
+- **PLANT**: Plant throughput and metallurgical metrics (Crushed, Milled, CIL Feed, Tails) with actuals and budgets for tonnes, grades, and gold
 - **BENCHES**: Forward fill processing with QAQC sample identification
 
 ## 🚀 Features
 
-- ✅ **Automated Processing**: No manual data manipulation needed
-- ✅ **Error Handling**: Robust processing with detailed error reporting
-- ✅ **Data Validation**: Compares results against established validation targets
-- ✅ **Multiple Output Formats**: CSV downloads and comprehensive reports
-- ✅ **Real-time Progress**: See processing status as it happens
-- ✅ **Batch Processing**: Handle multiple sheets simultaneously
-- ✅ **Visualizations**: Interactive charts and graphs
-- ✅ **Quality Assurance**: Comprehensive validation and error checking
+- **Automated Processing**: No manual data manipulation needed
+- **Error Handling**: Robust processing with detailed error reporting
+- **Data Validation**: Compares results against established validation targets
+- **Multiple Output Formats**: CSV downloads and comprehensive reports
+- **Real-time Progress**: See processing status as it happens
+- **Batch Processing**: Handle multiple sheets simultaneously
+- **Visualizations**: Interactive charts and graphs
+- **Quality Assurance**: Comprehensive validation and error checking
 
 ## 📋 Requirements
 
@@ -31,6 +31,7 @@ This tool consolidates all your mining data extraction needs into one streamline
 - numpy
 - openpyxl
 - plotly
+- pyarrow (15.0.2 pinned)
 
 ## 🔧 Installation
 
@@ -73,6 +74,9 @@ The system validates extracted data against these established targets:
 - Budget Metres: ~800m
 - Actual Metres: ~750m
 
+### PLANT
+- No validation targets defined yet; extraction is provided without validation by design.
+
 ### BENCHES
 - Minimum samples: 1,700
 - QAQC percentage: 10-20%
@@ -92,6 +96,7 @@ mining_dashboard/
 │   ├── tramming_processor.py       # TRAMMING sheet processor  
 │   ├── development_processor.py    # DEVELOPMENT sheet processor
 │   ├── hoisting_processor.py       # HOISTING sheet processor
+│   ├── plant_processor.py          # PLANT sheet processor
 │   └── benches_processor.py        # BENCHES sheet processor
 ├── utils/
 │   └── common.py                   # Common utility functions
@@ -116,6 +121,11 @@ mining_dashboard/
 - Handles complex Source/METRIC1/METRIC2/Value format
 - Processes multiple metrics per source
 - Creates normalized daily records
+
+### PLANT
+- Extracts daily actual and budget metrics for Crushed and Milled tonnes, grades, and gold
+- Extracts daily actual and budget metrics for CIL Feed and Tails grades and gold (with a dedicated Tails budget series)
+- Auto-detects month and day columns via 'Month' and 'Shifts' headers; robust to month-to-month layout shifts
 
 ### BENCHES
 - Applies forward fill processing for hierarchical data
