@@ -1,0 +1,22 @@
+MINING DAILY REPORT - MASTER EXTRACTION SUMMARY
+============================================================
+
+Processing Time: 2025-08-26 09:36:29
+Input File: v4/August_2025_DAILY_REPORT.xlsx
+Output Directory: outputs
+
+PROCESSING RESULTS:
+------------------------------
+PLANT: [SUCCESS]
+  Records: 31
+  Output: outputs\plant_data.csv
+
+OVERALL SUMMARY:
+--------------------
+Sheets Requested: 1
+Sheets Successful: 1
+Total Records: 31
+
+OUTPUT FILES:
+---------------
+- plant_data.csv

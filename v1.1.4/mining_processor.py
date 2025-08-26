@@ -17,7 +17,7 @@ sys.path.append(os.path.dirname(os.path.abspath(__file__)))
 
 from processors import (
     StopingProcessor, TrammingProcessor, DevelopmentProcessor, 
-    HoistingProcessor, BenchesProcessor
+    HoistingProcessor, BenchesProcessor, PlantProcessor
 )
 from utils.common import (
     setup_logger, calculate_monthly_statistics, 
@@ -43,7 +43,8 @@ class MiningDataProcessor:
             'TRAMMING': TrammingProcessor(self.logger),
             'DEVELOPMENT': DevelopmentProcessor(self.logger),
             'HOISTING': HoistingProcessor(self.logger),
-            'BENCHES': BenchesProcessor(self.logger)
+            'BENCHES': BenchesProcessor(self.logger),
+            'PLANT': PlantProcessor(self.logger)
         }
         
         self.results = {}
@@ -95,6 +96,10 @@ class MiningDataProcessor:
                 
             elif sheet_type == 'HOISTING':
                 df = self.processors['HOISTING'].extract_hoisting_data(file_path)
+                result['data'] = df
+                
+            elif sheet_type == 'PLANT':
+                df = self.processors['PLANT'].extract_plant_data(file_path)
                 result['data'] = df
                 
             elif sheet_type == 'BENCHES':
@@ -149,7 +154,7 @@ class MiningDataProcessor:
         
         # Process selected sheets (or all if none specified)
         if selected_sheets is None:
-            selected_sheets = ['STOPING', 'TRAMMING', 'DEVELOPMENT', 'HOISTING', 'BENCHES']
+            selected_sheets = ['STOPING', 'TRAMMING', 'DEVELOPMENT', 'HOISTING', 'PLANT', 'BENCHES']
         
         results = {
             'processing_time': datetime.now().strftime('%Y-%m-%d %H:%M:%S'),

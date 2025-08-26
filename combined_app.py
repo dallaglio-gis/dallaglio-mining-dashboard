@@ -50,13 +50,13 @@ IMPORT_ERRORS = []
 """
 Combined Mining Dashboard
 
-This Streamlit application consolidates three separate tools into a single
+This Streamlit application consolidates four separate tools into a single
 dashboard:
 
 1. **Mining Data Processor** – Extracts, validates and summarizes data from
    mining daily report Excel files.  This logic comes from the original
    *v1.1.4* dashboard and uses the `MiningDataProcessor` class to process
-   STOPING, TRAMMING, DEVELOPMENT, HOISTING and BENCHES sheets.
+   STOPING, TRAMMING, DEVELOPMENT, HOISTING, PLANT and BENCHES sheets.
 
 2. **Production Dashboard** – An interactive analytics dashboard for
    exploring production data (stoping, tramming and bench grades).  This
@@ -858,7 +858,7 @@ def run_mining_processor_page():
     other pages.
     """
     st.markdown("## ⛏️ Mining Data Processor")
-    st.markdown("Process your mining daily report and extract structured data from the STOPING, TRAMMING, DEVELOPMENT, HOISTING and BENCHES sheets.")
+    st.markdown("Process your mining daily report and extract structured data from the STOPING, TRAMMING, DEVELOPMENT, HOISTING, PLANT and BENCHES sheets.")
 
     # Early exit if the processor module cannot be imported
     if MiningDataProcessor is None:
@@ -874,7 +874,7 @@ def run_mining_processor_page():
             help="Select your mining daily report Excel file for extraction."
         )
         st.markdown("Select which sheets to process:")
-        sheet_options = ['STOPING', 'TRAMMING', 'DEVELOPMENT', 'HOISTING', 'BENCHES']
+        sheet_options = ['STOPING', 'TRAMMING', 'DEVELOPMENT', 'HOISTING', 'PLANT', 'BENCHES']
         selected_sheets = []
         for sheet in sheet_options:
             if st.checkbox(f"{sheet}", value=True, key=f"mp_sheet_{sheet}"):
